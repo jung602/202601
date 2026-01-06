@@ -1,6 +1,7 @@
 varying vec2 vUv;
 varying float vVisibility;
 varying vec4 vTextureCoords;
+varying float vAspectRatio;
 
 uniform sampler2D uAtlas;
 uniform sampler2D uBlurryAtlas;
@@ -41,6 +42,21 @@ void main()
 
     // Remap UV for the image area (account for padding)
     vec2 imageUV = (vUv - padding) / (1.0 - 2.0 * padding);
+    
+    // Apply cover effect: scale UV to fill card while maintaining aspect ratio
+    float cardAspect = 1.0 / 1.69; // card width/height ratio
+    float imageAspect = vAspectRatio;
+    
+    if (imageAspect > cardAspect) {
+        // Image is wider than card: scale to fit height, crop width
+        float scale = cardAspect / imageAspect;
+        imageUV.x = (imageUV.x - 0.5) * scale + 0.5;
+    } else {
+        // Image is taller than card: scale to fit width, crop height
+        float scale = imageAspect / cardAspect;
+        imageUV.y = (imageUV.y - 0.5) * scale + 0.5;
+    }
+    
     imageUV = clamp(imageUV, 0.0, 1.0);
     
     vec2 atlasUV = vec2(

@@ -17,6 +17,7 @@ uniform float uScrollY;
 
 varying float vVisibility;
 varying vec4 vTextureCoords;
+varying float vAspectRatio;
 
 
 //linear smoothstep
@@ -27,22 +28,9 @@ float remap(float value, float originMin, float originMax)
 
 void main()
 {     
-    // Scale position based on aspect ratio
-    // Default plane is 1x1.69, we adjust width based on aspect ratio
-    // If aspect ratio > 1.69, image is wider, scale x
-    // If aspect ratio < 1.69, image is taller, scale y
-    float baseAspect = 1.0 / 1.69; // base plane aspect (width/height)
-    vec3 scaledPosition = position;
-    
-    if (aAspectRatio > baseAspect) {
-        // Image is wider than base, scale x
-        scaledPosition.x *= aAspectRatio / baseAspect;
-    } else {
-        // Image is taller than base, scale y
-        scaledPosition.y *= baseAspect / aAspectRatio;
-    }
-    
-    vec3 newPosition = scaledPosition + aInitialPosition;
+    // Keep card size fixed (1:1.69 ratio)
+    // Aspect ratio will be used in fragment shader for cover effect
+    vec3 newPosition = position + aInitialPosition;
 
     float maxX = uMaxXdisplacement.x;
     float maxY = uMaxXdisplacement.y;
@@ -115,4 +103,5 @@ void main()
 
     vUv = uv;
     vTextureCoords = aTextureCoords;
+    vAspectRatio = aAspectRatio;
 }
