@@ -75,6 +75,8 @@ export default class Planes {
   dragSensitivity: number = 1
   dragDamping: number = 0.1
   dragElement?: HTMLElement
+  isMobile: boolean = false
+  lastTouchY: number = 0
   imageInfos: ImageInfo[] = []
   atlasTexture: THREE.Texture | null = null
   blurryAtlasTexture: THREE.Texture | null = null
@@ -97,6 +99,9 @@ export default class Planes {
     this.sizes = sizes
     this.onProgress = onProgress
     this.onComplete = onComplete
+    
+    // Detect mobile device
+    this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0
 
     this.shaderParameters = {
       maxX: this.sizes.width * 2,
@@ -395,6 +400,41 @@ export default class Planes {
   bindDrag(element: HTMLElement) {
     this.dragElement = element
 
+    // Mobile: use touch scroll instead of drag
+    if (this.isMobile) {
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          this.lastTouchY = e.touches[0].clientY
+        }
+      }
+
+      const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          // Block scrolling for 0.5 seconds after layer change
+          const timeSinceLayerChange = Date.now() - this.lastLayerChangeTime
+          if (timeSinceLayerChange < this.layerChangeDelay) {
+            return
+          }
+
+          const currentY = e.touches[0].clientY
+          const dy = this.lastTouchY - currentY
+          this.lastTouchY = currentY
+
+          // Convert touch movement to scroll (similar to wheel behavior)
+          const scrollY = (dy * this.sizes.height) / window.innerHeight
+
+          // Clamp scroll to valid range (0 to 75)
+          this.scrollY.target = Math.max(0, Math.min(75, this.scrollY.target + scrollY))
+          this.material.uniforms.uSpeedY.value += scrollY
+        }
+      }
+
+      element.addEventListener("touchstart", onTouchStart, { passive: true })
+      element.addEventListener("touchmove", onTouchMove, { passive: true })
+      return
+    }
+
+    // Desktop: use drag
     const onPointerDown = (e: PointerEvent) => {
       this.drag.isDown = true
       this.drag.startX = e.clientX
