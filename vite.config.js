@@ -3,9 +3,9 @@ import glsl from "vite-plugin-glsl"
 import { defineConfig } from "vite"
 import tailwindcss from "@tailwindcss/vite"
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [glsl(), tailwindcss()],
-  base: '/202601/',
+  base: command === 'build' ? '/202601/' : '/',
   build: {
     outDir: 'docs',
   },
@@ -20,4 +20,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
