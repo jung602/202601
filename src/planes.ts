@@ -113,7 +113,8 @@ export default class Planes {
 
   async fetchCovers() {
     // Load images from 4 folders
-    const folderPaths = ["/covers/1/", "/covers/2/", "/covers/3/", "/covers/4/"]
+    const base = import.meta.env.BASE_URL
+    const folderPaths = [`${base}covers/1/`, `${base}covers/2/`, `${base}covers/3/`, `${base}covers/4/`]
     
     // Load all layers and collect all images
     const allLayerImages: { layerIndex: number; images: CanvasImageSource[]; imageInfos: ImageInfo[] }[] = []

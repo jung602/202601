@@ -158,10 +158,11 @@ class App {
   }
 
   async initSequence() {
+    const base = import.meta.env.BASE_URL
     // text 시퀀스 로드 (0021.png ~ 0120.png) - 무한 루프
-    await this.textSequencePlayer.loadSequence('/covers/5/text/', 21, 120)
+    await this.textSequencePlayer.loadSequence(`${base}covers/5/text/`, 21, 120)
     // letter 시퀀스 로드 (0100.png ~ 0200.png) - 클릭 재생/역재생
-    await this.letterSequencePlayer.loadSequence('/covers/5/letter/', 0, 200)
+    await this.letterSequencePlayer.loadSequence(`${base}covers/5/letter/`, 0, 200)
   }
 
   render(timestamp: number = 0) {
