@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite"
 
 export default defineConfig({
   plugins: [glsl(), tailwindcss()],
+  base: '/202601/',
   build: {
     outDir: 'docs',
   },
