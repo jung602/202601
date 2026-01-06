@@ -37,7 +37,7 @@ body {
 
 #loading-text {
   font-family: "Aeonik", sans-serif;
-  text-shadow: 0 0px 10px rgba(0, 0, 0, 0.1);
+  text-shadow: 0 0px 10px rgba(0, 0, 0, 0.25);
   letter-spacing: -0.05em;
   font-size: 72px;
   color: white;
