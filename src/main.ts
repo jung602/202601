@@ -14,30 +14,50 @@ class PNGSequencePlayer {
   }
 
   async loadSequence(basePath: string, startFrame: number, endFrame: number, padLength: number = 4) {
-    const promises: Promise<HTMLImageElement>[] = []
+    const totalFrames = endFrame - startFrame + 1
+    this.images = new Array(totalFrames)
 
-    for (let i = startFrame; i <= endFrame; i++) {
+    // 첫 프레임을 먼저 로드하고 바로 표시
+    const firstFrameNum = String(startFrame).padStart(padLength, '0')
+    const firstUrl = `${basePath}${firstFrameNum}.png`
+    
+    const firstImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = firstUrl
+    })
+    
+    this.images[0] = firstImg
+    if (this.imgElement) {
+      this.imgElement.src = firstImg.src
+    }
+
+    // 나머지 프레임 병렬 로드
+    const remainingPromises: Promise<{ index: number; img: HTMLImageElement }>[] = []
+    
+    for (let i = startFrame + 1; i <= endFrame; i++) {
       const frameNum = String(i).padStart(padLength, '0')
       const url = `${basePath}${frameNum}.png`
+      const index = i - startFrame
 
-      promises.push(
+      remainingPromises.push(
         new Promise((resolve, reject) => {
           const img = new Image()
-          img.onload = () => resolve(img)
+          img.onload = () => resolve({ index, img })
           img.onerror = reject
           img.src = url
         })
       )
     }
 
-    this.images = await Promise.all(promises)
+    const results = await Promise.all(remainingPromises)
+    for (const { index, img } of results) {
+      this.images[index] = img
+    }
+
     this.isLoaded = true
     console.log(`Loaded ${this.images.length} frames`)
-
-    // 첫 프레임 설정
-    if (this.images.length > 0 && this.imgElement) {
-      this.imgElement.src = this.images[0].src
-    }
   }
 
   update(timestamp: number) {
@@ -84,30 +104,50 @@ class ClickSequencePlayer {
   }
 
   async loadSequence(basePath: string, startFrame: number, endFrame: number, padLength: number = 4) {
-    const promises: Promise<HTMLImageElement>[] = []
+    const totalFrames = endFrame - startFrame + 1
+    this.images = new Array(totalFrames)
 
-    for (let i = startFrame; i <= endFrame; i++) {
+    // 첫 프레임을 먼저 로드하고 바로 표시
+    const firstFrameNum = String(startFrame).padStart(padLength, '0')
+    const firstUrl = `${basePath}${firstFrameNum}.png`
+    
+    const firstImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = firstUrl
+    })
+    
+    this.images[0] = firstImg
+    if (this.imgElement) {
+      this.imgElement.src = firstImg.src
+    }
+
+    // 나머지 프레임 병렬 로드
+    const remainingPromises: Promise<{ index: number; img: HTMLImageElement }>[] = []
+    
+    for (let i = startFrame + 1; i <= endFrame; i++) {
       const frameNum = String(i).padStart(padLength, '0')
       const url = `${basePath}${frameNum}.png`
+      const index = i - startFrame
 
-      promises.push(
+      remainingPromises.push(
         new Promise((resolve, reject) => {
           const img = new Image()
-          img.onload = () => resolve(img)
+          img.onload = () => resolve({ index, img })
           img.onerror = reject
           img.src = url
         })
       )
     }
 
-    this.images = await Promise.all(promises)
+    const results = await Promise.all(remainingPromises)
+    for (const { index, img } of results) {
+      this.images[index] = img
+    }
+
     this.isLoaded = true
     console.log(`Loaded ${this.images.length} frames (click to play)`)
-
-    // 첫 프레임 설정
-    if (this.images.length > 0 && this.imgElement) {
-      this.imgElement.src = this.images[0].src
-    }
   }
 
   onClick() {
