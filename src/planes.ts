@@ -116,7 +116,7 @@ export default class Planes {
 
   createGeometry() {
     this.geometry = new THREE.PlaneGeometry(1, 1.69, 1, 1)
-    this.geometry.scale(2.5, 2.5, 2.5) // 2 * 1.25 = 2.5
+    this.geometry.scale(3, 3, 3) // 2 * 1.25 = 2.5
   }
 
   async fetchCovers() {
