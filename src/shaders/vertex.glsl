@@ -28,9 +28,11 @@ float remap(float value, float originMin, float originMax)
 
 void main()
 {     
-    // Keep card size fixed (1:1.69 ratio)
-    // Aspect ratio will be used in fragment shader for cover effect
-    vec3 newPosition = position + aInitialPosition;
+    // Scale card width based on image aspect ratio (height is fixed at 1)
+    vec3 scaledPosition = position;
+    scaledPosition.x *= aAspectRatio; // width = height * aspectRatio
+    
+    vec3 newPosition = scaledPosition + aInitialPosition;
 
     float maxX = uMaxXdisplacement.x;
     float maxY = uMaxXdisplacement.y;

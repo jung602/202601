@@ -115,8 +115,9 @@ export default class Planes {
   }
 
   createGeometry() {
-    this.geometry = new THREE.PlaneGeometry(1, 1.69, 1, 1)
-    this.geometry.scale(3, 3, 3) // 2 * 1.25 = 2.5
+    // 1:1 정사각형 기반 (높이 기준, width는 shader에서 aspect ratio로 조정)
+    this.geometry = new THREE.PlaneGeometry(1, 1, 1, 1)
+    this.geometry.scale(5, 5, 5)
   }
 
   async fetchCovers() {

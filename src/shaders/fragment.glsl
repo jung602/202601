@@ -17,19 +17,25 @@ void main()
     // Discard if not visible (prevents ghost frames)
     if(vVisibility < 0.01) discard;
     
-    // Frame parameters
-    float padding = 0.03; // 8px equivalent padding ratio
-    float cornerRadius = 0.06; // Rounded corner radius
-    float innerCornerRadius = 0.03; // Inner rounded corner radius
+    // Frame parameters (in physical units, height = 1)
+    float padding = 0.03; // Physical padding (same on all sides)
+    float cornerRadius = 0.06; // Physical corner radius
+    float innerCornerRadius = 0.03; // Physical inner corner radius
     
     // Convert UV to centered coordinates (-0.5 to 0.5)
     vec2 centered = vUv - 0.5;
     
-    // Outer frame bounds (full card)
-    float outerDist = roundedBoxSDF(centered, vec2(0.5, 0.5), cornerRadius);
+    // Convert to physical coordinates (height = 1, width = aspectRatio)
+    vec2 physical = centered;
+    physical.x *= vAspectRatio;
     
-    // Inner image bounds (with padding)
-    float innerDist = roundedBoxSDF(centered, vec2(0.5 - padding, 0.5 - padding), innerCornerRadius);
+    // Physical halfSize of the card
+    vec2 outerHalfSize = vec2(0.5 * vAspectRatio, 0.5);
+    vec2 innerHalfSize = vec2(0.5 * vAspectRatio - padding, 0.5 - padding);
+    
+    // Calculate SDF in physical space (radius is now uniform)
+    float outerDist = roundedBoxSDF(physical, outerHalfSize, cornerRadius);
+    float innerDist = roundedBoxSDF(physical, innerHalfSize, innerCornerRadius);
     
     // Discard pixels outside the outer frame
     if(outerDist > 0.0) discard;
@@ -40,23 +46,15 @@ void main()
     float yStart = vTextureCoords.z;
     float yEnd = vTextureCoords.w;
 
-    // Remap UV for the image area (account for padding)
-    vec2 imageUV = (vUv - padding) / (1.0 - 2.0 * padding);
+    // Remap UV for the image area (account for padding in UV space)
+    float paddingX = padding / vAspectRatio; // Convert physical padding to UV space
+    float paddingY = padding;
+    vec2 imageUV = vec2(
+        (vUv.x - paddingX) / (1.0 - 2.0 * paddingX),
+        (vUv.y - paddingY) / (1.0 - 2.0 * paddingY)
+    );
     
-    // Apply cover effect: scale UV to fill card while maintaining aspect ratio
-    float cardAspect = 1.0 / 1.69; // card width/height ratio
-    float imageAspect = vAspectRatio;
-    
-    if (imageAspect > cardAspect) {
-        // Image is wider than card: scale to fit height, crop width
-        float scale = cardAspect / imageAspect;
-        imageUV.x = (imageUV.x - 0.5) * scale + 0.5;
-    } else {
-        // Image is taller than card: scale to fit width, crop height
-        float scale = imageAspect / cardAspect;
-        imageUV.y = (imageUV.y - 0.5) * scale + 0.5;
-    }
-    
+    // Image now fits card exactly (no cover crop needed)
     imageUV = clamp(imageUV, 0.0, 1.0);
     
     vec2 atlasUV = vec2(
