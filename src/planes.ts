@@ -1,0 +1,506 @@
+import * as THREE from "three"
+import vertexShader from "./shaders/vertex.glsl"
+import fragmentShader from "./shaders/fragment.glsl"
+import { Size } from "./types/types"
+import normalizeWheel from "normalize-wheel"
+
+interface Props {
+  scene: THREE.Scene
+  sizes: Size
+}
+
+interface ImageInfo {
+  width: number
+  height: number
+  aspectRatio: number
+  uvs: {
+    xStart: number
+    xEnd: number
+    yStart: number
+    yEnd: number
+  }
+}
+
+interface LayerData {
+  folderIndex: number
+  imageInfos: ImageInfo[]
+  atlasTexture: THREE.Texture
+  blurryAtlasTexture: THREE.Texture
+}
+
+export default class Planes {
+  scene: THREE.Scene
+  geometry: THREE.PlaneGeometry
+  material: THREE.ShaderMaterial
+  mesh: THREE.InstancedMesh
+  meshCount: number = 0 // Will be set dynamically
+  instancesPerStage: number = 50 // Number of card instances per stage
+  sizes: Size
+  drag: {
+    xCurrent: number
+    xTarget: number
+    yCurrent: number
+    yTarget: number
+    isDown: boolean
+    startX: number
+    startY: number
+    lastX: number
+    lastY: number
+  } = {
+    xCurrent: 0,
+    xTarget: 0,
+    yCurrent: 0,
+    yTarget: 0,
+    isDown: false,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+  }
+  shaderParameters = {
+    maxX: 0,
+    maxY: 0,
+  }
+  scrollY: {
+    target: number
+    current: number
+    direction: number
+  } = {
+    target: 0,
+    current: 0,
+    direction: 0,
+  }
+  dragSensitivity: number = 1
+  dragDamping: number = 0.1
+  dragElement?: HTMLElement
+  imageInfos: ImageInfo[] = []
+  atlasTexture: THREE.Texture | null = null
+  blurryAtlasTexture: THREE.Texture | null = null
+  layers: LayerData[] = []
+  layerCount: number = 4
+  currentLayer: number = 0
+  layerIndicator: HTMLElement | null = null
+  layerIndicator2: HTMLElement | null = null
+  page2026: HTMLElement | null = null
+  introElement: HTMLElement | null = null
+  lastLayerChangeTime: number = 0
+  layerChangeDelay: number = 500 // 0.5 seconds in milliseconds
+
+  constructor({ scene, sizes }: Props) {
+    this.scene = scene
+    this.sizes = sizes
+
+    this.shaderParameters = {
+      maxX: this.sizes.width * 2,
+      maxY: this.sizes.height * 2,
+    }
+
+    this.createGeometry()
+    this.createMaterial()
+    this.fetchCovers()
+    this.layerIndicator = document.getElementById("layer-indicator")
+    this.layerIndicator2 = document.getElementById("layer-indicator2")
+    this.page2026 = document.getElementById("page-2026")
+    this.introElement = document.getElementById("intro")
+
+    window.addEventListener("wheel", this.onWheel.bind(this))
+  }
+
+  createGeometry() {
+    this.geometry = new THREE.PlaneGeometry(1, 1.69, 1, 1)
+    this.geometry.scale(2.5, 2.5, 2.5) // 2 * 1.25 = 2.5
+  }
+
+  async fetchCovers() {
+    // Load images from 4 folders
+    const folderPaths = ["/covers/1/", "/covers/2/", "/covers/3/", "/covers/4/"]
+    
+    // Load all layers and collect all images
+    const allLayerImages: { layerIndex: number; images: CanvasImageSource[]; imageInfos: ImageInfo[] }[] = []
+    
+    for (let layerIndex = 0; layerIndex < this.layerCount; layerIndex++) {
+      const folderPath = folderPaths[layerIndex]
+      
+      // Get image files in folder (assuming image_0.jpeg, image_1.jpeg, etc.)
+      // We'll try to load up to 20 images per folder
+      const imageUrls: string[] = []
+      for (let i = 0; i < 20; i++) {
+        imageUrls.push(`${folderPath}image_${i}.jpeg`)
+      }
+      
+      const layerImages = await this.loadLayerImages(imageUrls)
+      allLayerImages.push({
+        layerIndex,
+        images: layerImages.images,
+        imageInfos: layerImages.imageInfos,
+      })
+      
+      // Store layer data for mesh distribution
+      this.layers.push({
+        folderIndex: layerIndex,
+        imageInfos: layerImages.imageInfos,
+        atlasTexture: null as any, // Will be set after combined atlas
+        blurryAtlasTexture: null as any,
+      })
+    }
+    
+    // Create combined atlas from all layers
+    await this.createCombinedAtlas(allLayerImages)
+    
+    this.fillMeshData()
+  }
+  
+  async loadLayerImages(urls: string[]): Promise<{ images: CanvasImageSource[]; imageInfos: ImageInfo[] }> {
+    // Load all images with CORS-safe approach
+    const imagePromises = urls.map(async (path) => {
+      try {
+        const res = await fetch(path, { mode: "cors" })
+        if (!res.ok) throw new Error(`Failed to fetch image: ${path}`)
+        const blob = await res.blob()
+        const bitmap = await createImageBitmap(blob)
+        return { image: bitmap as CanvasImageSource, path }
+      } catch (err) {
+        return null
+      }
+    })
+
+    const imageResults = await Promise.all(imagePromises)
+    const validImages = imageResults.filter((result): result is { image: CanvasImageSource; path: string } => result !== null)
+    
+    if (validImages.length === 0) {
+      throw new Error(`No images found`)
+    }
+
+    const images = validImages.map(r => r.image)
+    return { images, imageInfos: [] }
+  }
+  
+  async createCombinedAtlas(allLayerImages: { layerIndex: number; images: CanvasImageSource[]; imageInfos: ImageInfo[] }[]) {
+    // Calculate combined atlas dimensions
+    let maxWidth = 0
+    let totalHeight = 0
+    
+    // First pass: calculate dimensions
+    for (const layerData of allLayerImages) {
+      for (const img of layerData.images) {
+        maxWidth = Math.max(maxWidth, (img as any).width as number)
+        totalHeight += (img as any).height as number
+      }
+    }
+    
+    // Create combined canvas
+    const canvas = document.createElement("canvas")
+    canvas.width = maxWidth
+    canvas.height = totalHeight
+    const ctx = canvas.getContext("2d")!
+    
+    // Second pass: draw images and calculate UVs
+    let currentY = 0
+    let imageInfoIndex = 0
+    
+    for (const layerData of allLayerImages) {
+      const layerImageInfos: ImageInfo[] = []
+      
+      for (const img of layerData.images) {
+        const width = (img as any).width as number
+        const height = (img as any).height as number
+        const aspectRatio = width / height
+        
+        // Draw image
+        ctx.drawImage(img as any, 0, currentY)
+        
+        // Calculate UV coordinates
+        const info: ImageInfo = {
+          width,
+          height,
+          aspectRatio,
+          uvs: {
+            xStart: 0,
+            xEnd: width / maxWidth,
+            yStart: 1 - currentY / totalHeight,
+            yEnd: 1 - (currentY + height) / totalHeight,
+          },
+        }
+        
+        layerImageInfos.push(info)
+        currentY += height
+        imageInfoIndex++
+      }
+      
+      // Update layer data with image infos
+      const layer = this.layers.find(l => l.folderIndex === layerData.layerIndex)
+      if (layer) {
+        layer.imageInfos = layerImageInfos
+      }
+    }
+    
+    // Create texture from combined canvas
+    this.atlasTexture = new THREE.Texture(canvas)
+    this.atlasTexture.wrapS = THREE.ClampToEdgeWrapping
+    this.atlasTexture.wrapT = THREE.ClampToEdgeWrapping
+    this.atlasTexture.minFilter = THREE.LinearFilter
+    this.atlasTexture.magFilter = THREE.LinearFilter
+    this.atlasTexture.needsUpdate = true
+    this.material.uniforms.uAtlas.value = this.atlasTexture
+    
+    // Create blurry version
+    const blurryCanvas = document.createElement("canvas")
+    blurryCanvas.width = this.atlasTexture.image.width
+    blurryCanvas.height = this.atlasTexture.image.height
+    const blurryCtx = blurryCanvas.getContext("2d")!
+    blurryCtx.filter = "blur(100px)"
+    blurryCtx.drawImage(this.atlasTexture.image, 0, 0)
+    this.blurryAtlasTexture = new THREE.Texture(blurryCanvas)
+    this.blurryAtlasTexture.wrapS = THREE.ClampToEdgeWrapping
+    this.blurryAtlasTexture.wrapT = THREE.ClampToEdgeWrapping
+    this.blurryAtlasTexture.minFilter = THREE.LinearFilter
+    this.blurryAtlasTexture.magFilter = THREE.LinearFilter
+    this.blurryAtlasTexture.needsUpdate = true
+    this.material.uniforms.uBlurryAtlas.value = this.blurryAtlasTexture
+    
+    // Calculate mesh count: instancesPerStage * number of layers
+    this.meshCount = this.instancesPerStage * this.layerCount
+    this.createInstancedMesh()
+  }
+
+
+
+  createMaterial() {
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader,
+      transparent: true,
+      uniforms: {
+        uTime: { value: 0 },
+        uMaxXdisplacement: {
+          value: new THREE.Vector2(
+            this.shaderParameters.maxX,
+            this.shaderParameters.maxY
+          ),
+        },
+        uAtlas: new THREE.Uniform(this.atlasTexture),
+        uBlurryAtlas: new THREE.Uniform(this.blurryAtlasTexture),
+        uScrollY: { value: 0 },
+        uSpeedY: { value: 0 },
+        uDrag: { value: new THREE.Vector2(0, 0) },
+      },
+    })
+  }
+
+  createInstancedMesh() {
+    this.mesh = new THREE.InstancedMesh(
+      this.geometry,
+      this.material,
+      this.meshCount
+    )
+    this.scene.add(this.mesh)
+  }
+
+  fillMeshData() {
+    // Each stage gets instancesPerStage meshes, images repeat if needed
+    let meshIndex = 0
+    const initialPosition = new Float32Array(this.meshCount * 3)
+    const meshSpeed = new Float32Array(this.meshCount)
+    const aTextureCoords = new Float32Array(this.meshCount * 4)
+    const aLayerIndex = new Float32Array(this.meshCount)
+    const aAspectRatio = new Float32Array(this.meshCount)
+
+    // All layers use the same Z range for consistent sizing
+    const baseZRange = { min: -8, max: -3 }
+
+    for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
+      const layer = this.layers[layerIdx]
+      const imageCount = layer.imageInfos.length
+      
+      // Create instancesPerStage meshes for this layer
+      for (let i = 0; i < this.instancesPerStage; i++) {
+        // Cycle through images if we have more instances than images
+        const imageIndex = i % imageCount
+        const imageInfo = layer.imageInfos[imageIndex]
+
+        // Random X and Y position
+        initialPosition[meshIndex * 3 + 0] =
+          (Math.random() - 0.5) * this.shaderParameters.maxX * 2
+        initialPosition[meshIndex * 3 + 1] =
+          (Math.random() - 0.5) * this.shaderParameters.maxY * 2
+
+        // Z position within layer range (with depth variation)
+        initialPosition[meshIndex * 3 + 2] = 
+          Math.random() * (baseZRange.max - baseZRange.min) + baseZRange.min
+
+        meshSpeed[meshIndex] = Math.random() * 0.5 + 0.5
+
+        aTextureCoords[meshIndex * 4 + 0] = imageInfo.uvs.xStart
+        aTextureCoords[meshIndex * 4 + 1] = imageInfo.uvs.xEnd
+        aTextureCoords[meshIndex * 4 + 2] = imageInfo.uvs.yStart
+        aTextureCoords[meshIndex * 4 + 3] = imageInfo.uvs.yEnd
+
+        aLayerIndex[meshIndex] = layerIdx
+        aAspectRatio[meshIndex] = imageInfo.aspectRatio
+
+        meshIndex++
+      }
+    }
+
+    this.geometry.setAttribute(
+      "aInitialPosition",
+      new THREE.InstancedBufferAttribute(initialPosition, 3)
+    )
+    this.geometry.setAttribute(
+      "aMeshSpeed",
+      new THREE.InstancedBufferAttribute(meshSpeed, 1)
+    )
+    this.geometry.setAttribute(
+      "aLayerIndex",
+      new THREE.InstancedBufferAttribute(aLayerIndex, 1)
+    )
+    this.geometry.setAttribute(
+      "aAspectRatio",
+      new THREE.InstancedBufferAttribute(aAspectRatio, 1)
+    )
+
+    this.mesh.geometry.setAttribute(
+      "aTextureCoords",
+      new THREE.InstancedBufferAttribute(aTextureCoords, 4)
+    )
+  }
+
+  bindDrag(element: HTMLElement) {
+    this.dragElement = element
+
+    const onPointerDown = (e: PointerEvent) => {
+      this.drag.isDown = true
+      this.drag.startX = e.clientX
+      this.drag.startY = e.clientY
+      this.drag.lastX = e.clientX
+      this.drag.lastY = e.clientY
+      element.setPointerCapture(e.pointerId)
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!this.drag.isDown) return
+      const dx = e.clientX - this.drag.lastX
+      const dy = e.clientY - this.drag.lastY
+      this.drag.lastX = e.clientX
+      this.drag.lastY = e.clientY
+
+      // Convert pixels to world units proportionally to viewport size
+      const worldPerPixelX =
+        (this.sizes.width / window.innerWidth) * this.dragSensitivity
+      const worldPerPixelY =
+        (this.sizes.height / window.innerHeight) * this.dragSensitivity
+
+      this.drag.xTarget += -dx * worldPerPixelX
+      this.drag.yTarget += dy * worldPerPixelY
+    }
+
+    const onPointerUp = (e: PointerEvent) => {
+      this.drag.isDown = false
+      try {
+        element.releasePointerCapture(e.pointerId)
+      } catch {}
+    }
+
+    element.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+  }
+
+  onWheel(event: MouseEvent) {
+    // Block scrolling for 0.5 seconds after layer change
+    const timeSinceLayerChange = Date.now() - this.lastLayerChangeTime
+    if (timeSinceLayerChange < this.layerChangeDelay) {
+      return
+    }
+
+    const normalizedWheel = normalizeWheel(event)
+
+    let scrollY =
+      (normalizedWheel.pixelY * this.sizes.height) / window.innerHeight
+
+    // Clamp scroll to valid range (0 to 75)
+    this.scrollY.target = Math.max(0, Math.min(75, this.scrollY.target + scrollY))
+
+    this.material.uniforms.uSpeedY.value += scrollY
+  }
+
+  render(delta: number) {
+    this.material.uniforms.uTime.value += delta * 0.015
+
+    // Smoothly interpolate current drag towards target
+    this.drag.xCurrent +=
+      (this.drag.xTarget - this.drag.xCurrent) * this.dragDamping
+    this.drag.yCurrent +=
+      (this.drag.yTarget - this.drag.yCurrent) * this.dragDamping
+
+    this.material.uniforms.uDrag.value.set(
+      this.drag.xCurrent,
+      this.drag.yCurrent
+    )
+
+    this.scrollY.current = interpolate(
+      this.scrollY.current,
+      this.scrollY.target,
+      0.12
+    )
+
+    // Update intro opacity based on scroll
+    if (this.introElement) {
+      const fadeOutStart = 0
+      const fadeOutEnd = 2
+      const scrollProgress = Math.min(this.scrollY.current, fadeOutEnd)
+      const opacity = Math.max(0, 1 - (scrollProgress / fadeOutEnd))
+      this.introElement.style.opacity = opacity.toString()
+    }
+
+    this.material.uniforms.uScrollY.value = this.scrollY.current
+
+    this.material.uniforms.uSpeedY.value *= 0.835
+
+    // Calculate current layer based on scroll position (no infinite loop)
+    const layerDuration = 15.0
+    const clampedScroll = Math.max(0, Math.min(75, this.scrollY.current))
+    
+    // Determine which layer/year we're on
+    let newLayer: number
+    if (clampedScroll >= 60) {
+      newLayer = 4 // 2026 page
+    } else {
+      newLayer = Math.floor(clampedScroll / layerDuration)
+    }
+    
+    // Update layer indicator if changed
+    const years = ["2022", "2023", "2024", "2025", "2026"]
+    if (newLayer !== this.currentLayer) {
+      this.currentLayer = newLayer
+      this.lastLayerChangeTime = Date.now() // Record layer change time
+      
+      if (this.layerIndicator && this.layerIndicator2) {
+        this.layerIndicator.textContent = years[this.currentLayer]
+        this.layerIndicator2.textContent = years[this.currentLayer]
+      }
+      
+      // Show/hide 2026 page
+      if (this.page2026) {
+        if (newLayer === 4) {
+          this.page2026.classList.add("visible")
+        } else {
+          this.page2026.classList.remove("visible")
+        }
+      }
+    }
+
+    // Show layerIndicator2 only after intro has faded out (scrollY >= 2) and not on 2026 page
+    if (this.layerIndicator2) {
+      if (this.scrollY.current >= 2 && this.currentLayer !== 4) {
+        this.layerIndicator2.style.opacity = "1"
+      } else {
+        this.layerIndicator2.style.opacity = "0"
+      }
+    }
+  }
+}
+
+const interpolate = (current: number, target: number, ease: number) => {
+  return current + (target - current) * ease
+}
