@@ -78,11 +78,14 @@ export default class Canvas {
       },
       onComplete: () => {
         if (loadingElement) {
-          loadingElement.classList.add("hidden")
-          // Remove from DOM after transition
+          // Small delay to ensure 100% is visible before fading
           setTimeout(() => {
-            loadingElement.remove()
-          }, 500)
+            loadingElement.classList.add("hidden")
+            // Remove from DOM after transition completes
+            setTimeout(() => {
+              loadingElement.remove()
+            }, 800)
+          }, 300)
         }
       }
     })
