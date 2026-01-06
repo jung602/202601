@@ -77,14 +77,22 @@ export default class Canvas {
         }
       },
       onComplete: () => {
+        const mainContent = document.getElementById("main-content")
+        
         if (loadingElement) {
           // Small delay to ensure 100% is visible before fading
           setTimeout(() => {
             loadingElement.classList.add("hidden")
-            // Remove from DOM after transition completes
+            
+            // After loading fadeout (0.8s) + white screen (0.2s), fadein main content
+            setTimeout(() => {
+              mainContent?.classList.add("visible")
+            }, 1000)
+            
+            // Remove loading from DOM after all transitions
             setTimeout(() => {
               loadingElement.remove()
-            }, 800)
+            }, 1800)
           }, 300)
         }
       }

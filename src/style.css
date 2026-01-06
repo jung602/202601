@@ -26,6 +26,15 @@ body {
   pointer-events: none;
 }
 
+#main-content {
+  opacity: 0;
+  transition: opacity 0.8s ease-out;
+}
+
+#main-content.visible {
+  opacity: 1;
+}
+
 #loading-text {
   font-family: "Aeonik", sans-serif;
   text-shadow: 0 0px 10px rgba(0, 0, 0, 0.1);
