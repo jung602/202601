@@ -9,6 +9,37 @@ body {
   font-family: "Aeonik";
 }
 
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  transition: opacity 0.5s ease;
+}
+
+#loading.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#loading-text {
+  font-family: "Aeonik", sans-serif;
+  text-shadow: 0 0px 10px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.05em;
+  font-size: 72px;
+  color: white;
+  letter-spacing: -0.05em;
+}
+
+@media (max-width: 768px) {
+  #loading-text {
+    font-size: 64px;
+  }
+}
+
 * {
   scrollbar-color: transparent transparent;
   scrollbar-width: none;

@@ -7,6 +7,8 @@ import normalizeWheel from "normalize-wheel"
 interface Props {
   scene: THREE.Scene
   sizes: Size
+  onProgress?: (progress: number) => void
+  onComplete?: () => void
 }
 
 interface ImageInfo {
@@ -85,10 +87,16 @@ export default class Planes {
   introElement: HTMLElement | null = null
   lastLayerChangeTime: number = 0
   layerChangeDelay: number = 500 // 0.5 seconds in milliseconds
+  onProgress?: (progress: number) => void
+  onComplete?: () => void
+  totalImages: number = 0
+  loadedImages: number = 0
 
-  constructor({ scene, sizes }: Props) {
+  constructor({ scene, sizes, onProgress, onComplete }: Props) {
     this.scene = scene
     this.sizes = sizes
+    this.onProgress = onProgress
+    this.onComplete = onComplete
 
     this.shaderParameters = {
       maxX: this.sizes.width * 2,
@@ -113,7 +121,12 @@ export default class Planes {
 
   async fetchCovers() {
     // Load images from 4 folders
-    const folderPaths = ["/202601/covers/1/", "/202601/covers/2/", "/202601/covers/3/", "/202601/covers/4/"]
+    const base = import.meta.env.BASE_URL
+    const folderPaths = [`${base}covers/1/`, `${base}covers/2/`, `${base}covers/3/`, `${base}covers/4/`]
+    
+    // Calculate total images to load (20 per folder * 4 folders)
+    this.totalImages = 20 * this.layerCount
+    this.loadedImages = 0
     
     // Load all layers and collect all images
     const allLayerImages: { layerIndex: number; images: CanvasImageSource[]; imageInfos: ImageInfo[] }[] = []
@@ -148,6 +161,9 @@ export default class Planes {
     await this.createCombinedAtlas(allLayerImages)
     
     this.fillMeshData()
+    
+    // Notify loading complete
+    this.onComplete?.()
   }
   
   async loadLayerImages(urls: string[]): Promise<{ images: CanvasImageSource[]; imageInfos: ImageInfo[] }> {
@@ -158,8 +174,18 @@ export default class Planes {
         if (!res.ok) throw new Error(`Failed to fetch image: ${path}`)
         const blob = await res.blob()
         const bitmap = await createImageBitmap(blob)
+        
+        // Update progress
+        this.loadedImages++
+        const progress = Math.round((this.loadedImages / this.totalImages) * 100)
+        this.onProgress?.(progress)
+        
         return { image: bitmap as CanvasImageSource, path }
       } catch (err) {
+        // Still count as processed for progress
+        this.loadedImages++
+        const progress = Math.round((this.loadedImages / this.totalImages) * 100)
+        this.onProgress?.(progress)
         return null
       }
     })

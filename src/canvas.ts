@@ -65,7 +65,27 @@ export default class Canvas {
   }
 
   createPlanes() {
-    this.planes = new Planes({ scene: this.scene, sizes: this.sizes })
+    const loadingElement = document.getElementById("loading")
+    const loadingText = document.getElementById("loading-text")
+    
+    this.planes = new Planes({
+      scene: this.scene,
+      sizes: this.sizes,
+      onProgress: (progress) => {
+        if (loadingText) {
+          loadingText.textContent = `${progress}%`
+        }
+      },
+      onComplete: () => {
+        if (loadingElement) {
+          loadingElement.classList.add("hidden")
+          // Remove from DOM after transition
+          setTimeout(() => {
+            loadingElement.remove()
+          }, 500)
+        }
+      }
+    })
     // Bind drag interactions to the renderer's canvas
     this.planes.bindDrag(this.renderer.domElement)
   }
