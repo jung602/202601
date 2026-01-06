@@ -68,10 +68,18 @@ class ClickSequencePlayer {
   constructor(imgElementId: string) {
     this.imgElement = document.getElementById(imgElementId) as HTMLImageElement
     
-    // 클릭 이벤트 바인딩
+    // 클릭/터치 이벤트 바인딩
     if (this.imgElement) {
       this.imgElement.style.cursor = 'pointer'
+      
+      // 데스크톱: 클릭
       this.imgElement.addEventListener('click', () => this.onClick())
+      
+      // 모바일: 터치
+      this.imgElement.addEventListener('touchend', (e) => {
+        e.preventDefault() // 중복 클릭 이벤트 방지
+        this.onClick()
+      })
     }
   }
 
